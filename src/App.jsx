@@ -14,7 +14,10 @@ function AppContent() {
   const { isLocked, hasPasswordSet, lockApp } = useAuth();
   const { zenFocusMode, toggleZenFocusMode } = useTheme();
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    return window.innerWidth > 768;
+  });
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Keyboard Shortcuts Listener
@@ -36,14 +39,23 @@ function AppContent() {
   }, [toggleZenFocusMode, lockApp]);
 
   return (
-    <div className={`app-container ${zenFocusMode ? 'zen-active' : ''}`}>
+    <div className={`app-container ${zenFocusMode ? 'zen-active' : ''} ${!isSidebarOpen ? 'sidebar-closed' : 'sidebar-open'}`}>
       {/* Password Lock Screen Overlay */}
       <LockScreen />
 
       {/* Main Workspace (Visible when unlocked or set up) */}
       {(!isLocked || !hasPasswordSet) && (
         <>
-          {isSidebarOpen && <Sidebar />}
+          {/* Backdrop for mobile overlay when sidebar is open */}
+          {isSidebarOpen && (
+            <div
+              className="mobile-overlay"
+              onClick={() => setIsSidebarOpen(false)}
+              style={{ display: window.innerWidth <= 768 ? 'block' : 'none' }}
+            />
+          )}
+
+          <Sidebar onCloseMobile={() => setIsSidebarOpen(false)} />
 
           <main className="main-content">
             <ZenHeader

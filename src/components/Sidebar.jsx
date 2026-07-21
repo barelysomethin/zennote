@@ -13,7 +13,7 @@ import {
   X
 } from 'lucide-react';
 
-export function Sidebar() {
+export function Sidebar({ onCloseMobile }) {
   const {
     notes,
     activeNoteId,
@@ -37,6 +37,20 @@ export function Sidebar() {
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
+  const handleSelectNote = (id) => {
+    setActiveNoteId(id);
+    if (onCloseMobile && window.innerWidth <= 768) {
+      onCloseMobile();
+    }
+  };
+
+  const handleCreateNote = () => {
+    createNote();
+    if (onCloseMobile && window.innerWidth <= 768) {
+      onCloseMobile();
+    }
+  };
+
   return (
     <aside className="sidebar">
       {/* Header */}
@@ -47,6 +61,16 @@ export function Sidebar() {
           </div>
           <span>ZenNote</span>
         </div>
+        {onCloseMobile && (
+          <button
+            className="icon-btn"
+            onClick={onCloseMobile}
+            title="Close sidebar"
+            style={{ display: window.innerWidth <= 768 ? 'flex' : 'none' }}
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -131,11 +155,11 @@ export function Sidebar() {
               <div
                 key={note.id}
                 className={`note-item ${isActive ? 'active' : ''}`}
-                onClick={() => setActiveNoteId(note.id)}
+                onClick={() => handleSelectNote(note.id)}
               >
                 <div className="note-item-header">
                   <span className="note-title">{note.title || 'Untitled Note'}</span>
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '4px', items: 'center' }}>
                     {!note.isTrash && (
                       <button
                         className="icon-btn"
@@ -196,7 +220,7 @@ export function Sidebar() {
 
       {/* Footer / Create Note */}
       <div className="sidebar-footer">
-        <button className="new-note-btn" onClick={createNote}>
+        <button className="new-note-btn" onClick={handleCreateNote}>
           <Plus size={18} /> New Note
         </button>
       </div>

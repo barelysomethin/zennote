@@ -932,3 +932,107 @@ html, body, #root {
   justify-content: center;
   color: var(--text-muted);
 }
+
+/* Mobile Responsiveness Media Queries */
+@media (max-width: 768px) {
+  .app-container {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 86vw;
+    max-width: 320px;
+    box-shadow: var(--shadow-lg);
+    z-index: 200;
+    transform: translateX(0);
+  }
+
+  .app-container.sidebar-closed .sidebar {
+    transform: translateX(-100%);
+    pointer-events: none;
+  }
+
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(3px);
+    z-index: 150;
+    animation: fadeIn var(--transition-fast);
+  }
+
+  .zen-header {
+    height: 54px;
+    padding: 0 12px;
+  }
+
+  .header-left, .header-right {
+    gap: 4px;
+  }
+
+  .header-title-info {
+    max-width: 120px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 0.8rem;
+  }
+
+  .saved-indicator span:last-child {
+    display: none;
+  }
+
+  .editor-wrapper {
+    padding: 20px 16px 80px 16px;
+    height: calc(100vh - 54px);
+  }
+
+  .editor-title-input {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+  }
+
+  .editor-textarea {
+    font-size: 16px !important; /* Prevents auto-zoom on mobile inputs */
+    line-height: 1.6;
+  }
+
+  .editor-canvas-container {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .editor-stats-bar {
+    bottom: 12px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    padding: 6px 14px;
+    font-size: 0.7rem;
+    gap: 10px;
+    width: max-content;
+    max-width: 90vw;
+  }
+
+  .lock-card {
+    width: 90vw;
+    padding: 28px 18px;
+  }
+
+  .modal-content {
+    width: 94vw;
+    padding: 20px 16px;
+    max-height: 90vh;
+  }
+
+  .theme-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
