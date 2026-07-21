@@ -35,7 +35,8 @@ export function P2PProvider({ children }) {
   const remoteHandlersRef = useRef({
     onRemoteUpdateNote: null,
     onRemoteDeleteNote: null,
-    onBulkSyncNotes: null
+    onBulkSyncNotes: null,
+    getAllNotes: null
   });
 
   const setRemoteHandlers = (handlers) => {
@@ -49,14 +50,23 @@ export function P2PProvider({ children }) {
     } catch (e) {}
   }, [pairedPeers]);
 
-  // Initialize PeerJS with persistent custom Peer ID
+  // Initialize PeerJS with persistent custom Peer ID + Google STUN servers
   useEffect(() => {
     if (!myPeerId) return;
 
     setStatusMessage('Connecting to P2P network...');
 
-    // Initialize with fixed persistent ID
-    const peer = new Peer(myPeerId);
+    const peer = new Peer(myPeerId, {
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' }
+        ]
+      }
+    });
     peerRef.current = peer;
 
     peer.on('open', (id) => {
@@ -77,7 +87,6 @@ export function P2PProvider({ children }) {
     });
 
     peer.on('error', (err) => {
-      // If ID unavailable/taken temporarily, fallback gracefully
       if (err.type === 'unavailable-id') {
         const fallbackId = 'zen-' + Math.random().toString(36).substring(2, 10);
         localStorage.setItem(STORAGE_KEY_PEER_ID, fallbackId);
@@ -109,6 +118,12 @@ export function P2PProvider({ children }) {
         if (!prev.includes(conn.peer)) return [...prev, conn.peer];
         return prev;
       });
+
+      // Send current notes state to new peer
+      if (remoteHandlersRef.current.getAllNotes) {
+        const allNotes = remoteHandlersRef.current.getAllNotes();
+        conn.send({ type: 'BULK_NOTE_UPDATE', notes: allNotes });
+      }
     });
 
     conn.on('data', (data) => {
@@ -129,7 +144,6 @@ export function P2PProvider({ children }) {
     const cleanId = targetPeerId.trim();
     if (!peerRef.current || !cleanId || cleanId === myPeerId) return;
 
-    // Avoid duplicate connections
     if (connectionsRef.current.some(c => c.peer === cleanId)) return;
 
     setStatusMessage('Pairing devices...');
@@ -169,6 +183,18 @@ export function P2PProvider({ children }) {
     }
   };
 
+  // Manual sync all notes across connected peers
+  const syncAllNotes = () => {
+    if (remoteHandlersRef.current.getAllNotes) {
+      const allNotes = remoteHandlersRef.current.getAllNotes();
+      connectionsRef.current.forEach(conn => {
+        if (conn.open) {
+          conn.send({ type: 'BULK_NOTE_UPDATE', notes: allNotes });
+        }
+      });
+    }
+  };
+
   // Broadcast note updates live over WebRTC
   const broadcastNoteUpdate = (note) => {
     connectionsRef.current.forEach(conn => {
@@ -195,6 +221,7 @@ export function P2PProvider({ children }) {
         activeConnections,
         statusMessage,
         connectToPeer,
+        syncAllNotes,
         broadcastNoteUpdate,
         broadcastNoteDelete,
         setRemoteHandlers

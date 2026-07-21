@@ -200,11 +200,11 @@ export function SettingsModal({ isOpen, onClose }) {
                 Share this Peer ID with your other device to connect directly over WebRTC without a server.
               </p>
               <div className="search-input-wrapper" style={{ justifyContent: 'space-between' }}>
-                <code style={{ fontSize: '0.85rem', userSelect: 'all' }}>{myPeerId || 'Initializing...'}</code>
+                <code style={{ fontSize: '0.85rem', userSelect: 'all', wordBreak: 'break-all' }}>{myPeerId || 'Initializing...'}</code>
                 <button
                   type="button"
                   onClick={handleCopyPeerId}
-                  style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
                 >
                   {copied ? <Check size={16} /> : <Copy size={16} />}
                   <span style={{ fontSize: '0.75rem' }}>{copied ? 'Copied' : 'Copy'}</span>
@@ -232,9 +232,22 @@ export function SettingsModal({ isOpen, onClose }) {
               </form>
             </div>
 
-            <div className="setting-option-group" style={{ padding: '12px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                Network Status: {statusMessage}
+            <div className="setting-option-group" style={{ padding: '14px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Status: {statusMessage}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.__zenSyncAll) window.__zenSyncAll();
+                  }}
+                  className="icon-btn"
+                  title="Sync All Notes Now"
+                  style={{ width: 'auto', padding: '4px 10px', fontSize: '0.75rem', gap: '4px', border: '1px solid var(--border-color)' }}
+                >
+                  <RefreshCw size={12} /> Force Sync
+                </button>
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 Active Connected Peers: {activeConnections.length}

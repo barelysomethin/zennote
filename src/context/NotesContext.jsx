@@ -80,6 +80,7 @@ export function NotesProvider({ children }) {
   useEffect(() => {
     if (p2p && p2p.setRemoteHandlers) {
       p2p.setRemoteHandlers({
+        getAllNotes: () => notes,
         onRemoteUpdateNote: (remoteNote) => {
           setNotes(prev => {
             const exists = prev.find(n => n.id === remoteNote.id);
@@ -107,7 +108,7 @@ export function NotesProvider({ children }) {
         }
       });
     }
-  }, [p2p]);
+  }, [p2p, notes]);
 
   const activeNote = notes.find(n => n.id === activeNoteId) || null;
 

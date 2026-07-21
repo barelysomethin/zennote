@@ -2,13 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotesProvider } from './context/NotesContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
-import { P2PProvider } from './context/P2PContext';
+import { P2PProvider, useP2P } from './context/P2PContext';
 
 import { LockScreen } from './components/LockScreen';
 import { ZenHeader } from './components/ZenHeader';
 import { Sidebar } from './components/Sidebar';
 import { NoteEditor } from './components/NoteEditor';
 import { SettingsModal } from './components/SettingsModal';
+
+function P2PSyncBridge({ children }) {
+  const { syncAllNotes } = useP2P();
+  useEffect(() => {
+    window.__zenSyncAll = syncAllNotes;
+  }, [syncAllNotes]);
+  return children;
+}
 
 function AppContent() {
   const { isLocked, hasPasswordSet, lockApp } = useAuth();
@@ -83,9 +91,11 @@ export default function App() {
     <AuthProvider>
       <ThemeProvider>
         <P2PProvider>
-          <NotesProvider>
-            <AppContent />
-          </NotesProvider>
+          <P2PSyncBridge>
+            <NotesProvider>
+              <AppContent />
+            </NotesProvider>
+          </P2PSyncBridge>
         </P2PProvider>
       </ThemeProvider>
     </AuthProvider>
