@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useP2P } from './P2PContext';
 
 const NotesContext = createContext();
 
@@ -33,7 +34,9 @@ A clutter-free, private, and minimal environment designed for your best thoughts
   updatedAt: new Date().toISOString()
 };
 
-export function NotesProvider({ children, broadcastUpdate, broadcastDelete }) {
+export function NotesProvider({ children }) {
+  const p2p = useP2P();
+
   const [notes, setNotes] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_NOTES);
@@ -73,6 +76,39 @@ export function NotesProvider({ children, broadcastUpdate, broadcastDelete }) {
     }
   }, [notes]);
 
+  // Register P2P handlers
+  useEffect(() => {
+    if (p2p && p2p.setRemoteHandlers) {
+      p2p.setRemoteHandlers({
+        onRemoteUpdateNote: (remoteNote) => {
+          setNotes(prev => {
+            const exists = prev.find(n => n.id === remoteNote.id);
+            if (!exists) return [remoteNote, ...prev];
+            if (new Date(remoteNote.updatedAt) > new Date(exists.updatedAt)) {
+              return prev.map(n => (n.id === remoteNote.id ? remoteNote : n));
+            }
+            return prev;
+          });
+        },
+        onRemoteDeleteNote: (remoteId) => {
+          setNotes(prev => prev.filter(n => n.id !== remoteId));
+        },
+        onBulkSyncNotes: (remoteNotes) => {
+          setNotes(prev => {
+            const mergedMap = new Map(prev.map(n => [n.id, n]));
+            remoteNotes.forEach(rn => {
+              const local = mergedMap.get(rn.id);
+              if (!local || new Date(rn.updatedAt) > new Date(local.updatedAt)) {
+                mergedMap.set(rn.id, rn);
+              }
+            });
+            return Array.from(mergedMap.values());
+          });
+        }
+      });
+    }
+  }, [p2p]);
+
   const activeNote = notes.find(n => n.id === activeNoteId) || null;
 
   const createNote = () => {
@@ -90,7 +126,9 @@ export function NotesProvider({ children, broadcastUpdate, broadcastDelete }) {
     setActiveNoteId(newNote.id);
     setIsSaved(false);
 
-    if (broadcastUpdate) broadcastUpdate(newNote);
+    if (p2p && p2p.broadcastNoteUpdate) {
+      p2p.broadcastNoteUpdate(newNote);
+    }
     return newNote.id;
   };
 
@@ -108,23 +146,23 @@ export function NotesProvider({ children, broadcastUpdate, broadcastDelete }) {
       })
     );
 
-    if (!skipBroadcast && broadcastUpdate && updatedObj) {
-      broadcastUpdate(updatedObj);
+    if (!skipBroadcast && p2p && p2p.broadcastNoteUpdate && updatedObj) {
+      p2p.broadcastNoteUpdate(updatedObj);
     }
   };
 
   const deleteNote = (id) => {
     const target = notes.find(n => n.id === id);
     if (target?.isTrash) {
-      // Permanent delete
       setNotes(prev => prev.filter(n => n.id !== id));
       if (activeNoteId === id) {
         const remaining = notes.filter(n => n.id !== id);
         setActiveNoteId(remaining.length > 0 ? remaining[0].id : null);
       }
-      if (broadcastDelete) broadcastDelete(id);
+      if (p2p && p2p.broadcastNoteDelete) {
+        p2p.broadcastNoteDelete(id);
+      }
     } else {
-      // Move to trash
       updateNote(id, { isTrash: true, isPinned: false });
     }
   };
@@ -154,40 +192,6 @@ export function NotesProvider({ children, broadcastUpdate, broadcastDelete }) {
     if (target) {
       updateNote(id, { tags: target.tags.filter(t => t !== tagToRemove) });
     }
-  };
-
-  // Merge P2P Remote Upsert
-  const applyRemoteNoteUpsert = (remoteNote) => {
-    setNotes(prev => {
-      const exists = prev.find(n => n.id === remoteNote.id);
-      if (!exists) {
-        return [remoteNote, ...prev];
-      }
-      // Compare timestamps
-      if (new Date(remoteNote.updatedAt) > new Date(exists.updatedAt)) {
-        return prev.map(n => (n.id === remoteNote.id ? remoteNote : n));
-      }
-      return prev;
-    });
-  };
-
-  // Merge P2P Remote Delete
-  const applyRemoteNoteDelete = (remoteId) => {
-    setNotes(prev => prev.filter(n => n.id !== remoteId));
-  };
-
-  // Merge Bulk P2P Sync
-  const applyBulkSyncNotes = (remoteNotes) => {
-    setNotes(prev => {
-      const mergedMap = new Map(prev.map(n => [n.id, n]));
-      remoteNotes.forEach(rn => {
-        const local = mergedMap.get(rn.id);
-        if (!local || new Date(rn.updatedAt) > new Date(local.updatedAt)) {
-          mergedMap.set(rn.id, rn);
-        }
-      });
-      return Array.from(mergedMap.values());
-    });
   };
 
   // Get list of all unique tags
@@ -262,9 +266,6 @@ export function NotesProvider({ children, broadcastUpdate, broadcastDelete }) {
         togglePinNote,
         addTagToNote,
         removeTagFromNote,
-        applyRemoteNoteUpsert,
-        applyRemoteNoteDelete,
-        applyBulkSyncNotes,
         allTags,
         searchTerm,
         setSearchTerm,

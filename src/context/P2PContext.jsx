@@ -5,18 +5,27 @@ const P2PContext = createContext();
 
 const STORAGE_KEY_SYNC_CODE = 'zen_p2p_sync_code';
 
-export function P2PProvider({ children, notes, onRemoteUpdateNote, onRemoteDeleteNote, onBulkSyncNotes }) {
+export function P2PProvider({ children }) {
   const [syncCode, setSyncCode] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY_SYNC_CODE) || '';
+    return localStorage.getItem(STORAGE_KEY_SYNC_CODE) || 'ZEN-ROOM';
   });
 
   const [myPeerId, setMyPeerId] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [activeConnections, setActiveConnections] = useState([]);
-  const [statusMessage, setStatusMessage] = useState('Standby');
+  const [statusMessage, setStatusMessage] = useState('P2P Standby');
 
   const peerRef = useRef(null);
   const connectionsRef = useRef([]);
+  const remoteHandlersRef = useRef({
+    onRemoteUpdateNote: null,
+    onRemoteDeleteNote: null,
+    onBulkSyncNotes: null
+  });
+
+  const setRemoteHandlers = (handlers) => {
+    remoteHandlersRef.current = { ...remoteHandlersRef.current, ...handlers };
+  };
 
   // Generate or set sync code
   const updateSyncCode = (code) => {
@@ -41,13 +50,12 @@ export function P2PProvider({ children, notes, onRemoteUpdateNote, onRemoteDelet
 
     setStatusMessage('Connecting to P2P network...');
 
-    // Standard public PeerJS server
     const peer = new Peer();
     peerRef.current = peer;
 
     peer.on('open', (id) => {
       setMyPeerId(id);
-      setStatusMessage(`P2P Ready (Code: ${syncCode})`);
+      setStatusMessage(`P2P Ready`);
       setIsConnected(true);
     });
 
@@ -57,7 +65,7 @@ export function P2PProvider({ children, notes, onRemoteUpdateNote, onRemoteDelet
 
     peer.on('error', (err) => {
       console.warn('P2P Peer error:', err);
-      setStatusMessage('P2P Connection Error');
+      setStatusMessage('P2P Standby');
     });
 
     return () => {
@@ -75,9 +83,6 @@ export function P2PProvider({ children, notes, onRemoteUpdateNote, onRemoteDelet
         setActiveConnections([...connectionsRef.current]);
       }
       setStatusMessage(`Connected (${connectionsRef.current.length} Peer)`);
-
-      // Exchange manifest upon opening connection
-      sendManifest(conn);
     });
 
     conn.on('data', (data) => {
@@ -88,12 +93,12 @@ export function P2PProvider({ children, notes, onRemoteUpdateNote, onRemoteDelet
       connectionsRef.current = connectionsRef.current.filter(c => c.peer !== conn.peer);
       setActiveConnections([...connectionsRef.current]);
       if (connectionsRef.current.length === 0) {
-        setStatusMessage(`P2P Ready (Code: ${syncCode})`);
+        setStatusMessage('P2P Ready');
       }
     });
   };
 
-  // Connect to target remote Peer ID or Sync Room Target
+  // Connect to target remote Peer ID
   const connectToPeer = (targetPeerId) => {
     if (!peerRef.current || !targetPeerId) return;
     setStatusMessage('Pairing devices...');
@@ -101,75 +106,29 @@ export function P2PProvider({ children, notes, onRemoteUpdateNote, onRemoteDelet
     setupConnection(conn);
   };
 
-  // Send note manifest to compare timestamps
-  const sendManifest = (conn) => {
-    const manifest = (notes || []).map(n => ({
-      id: n.id,
-      updatedAt: n.updatedAt,
-      isTrash: n.isTrash
-    }));
-    conn.send({ type: 'MANIFEST', manifest });
-  };
-
   // Handle incoming P2P messages
-  const handleIncomingP2PData = (data, conn) => {
+  const handleIncomingP2PData = (data) => {
     if (!data || !data.type) return;
+    const handlers = remoteHandlersRef.current;
 
     switch (data.type) {
-      case 'MANIFEST': {
-        const remoteManifest = data.manifest || [];
-        const missingOrOutdated = [];
-
-        // Check remote notes against local notes
-        remoteManifest.forEach(remoteNote => {
-          const localNote = (notes || []).find(n => n.id === remoteNote.id);
-          if (!localNote || new Date(remoteNote.updatedAt) > new Date(localNote.updatedAt)) {
-            missingOrOutdated.push(remoteNote.id);
-          }
-        });
-
-        if (missingOrOutdated.length > 0) {
-          conn.send({ type: 'REQUEST_NOTES', noteIds: missingOrOutdated });
-        }
-
-        // Send local notes that remote device is missing or outdated on
-        const notesToPush = (notes || []).filter(localNote => {
-          const remoteItem = remoteManifest.find(rm => rm.id === localNote.id);
-          return !remoteItem || new Date(localNote.updatedAt) > new Date(remoteItem.updatedAt);
-        });
-
-        if (notesToPush.length > 0) {
-          conn.send({ type: 'BULK_NOTE_UPDATE', notes: notesToPush });
-        }
-        break;
-      }
-
-      case 'REQUEST_NOTES': {
-        const requestedIds = data.noteIds || [];
-        const notesToSend = (notes || []).filter(n => requestedIds.includes(n.id));
-        if (notesToSend.length > 0) {
-          conn.send({ type: 'BULK_NOTE_UPDATE', notes: notesToSend });
-        }
-        break;
-      }
-
       case 'NOTE_UPSERT': {
-        if (data.note && onRemoteUpdateNote) {
-          onRemoteUpdateNote(data.note);
+        if (data.note && handlers.onRemoteUpdateNote) {
+          handlers.onRemoteUpdateNote(data.note);
         }
         break;
       }
 
       case 'BULK_NOTE_UPDATE': {
-        if (data.notes && onBulkSyncNotes) {
-          onBulkSyncNotes(data.notes);
+        if (data.notes && handlers.onBulkSyncNotes) {
+          handlers.onBulkSyncNotes(data.notes);
         }
         break;
       }
 
       case 'NOTE_DELETE': {
-        if (data.noteId && onRemoteDeleteNote) {
-          onRemoteDeleteNote(data.noteId);
+        if (data.noteId && handlers.onRemoteDeleteNote) {
+          handlers.onRemoteDeleteNote(data.noteId);
         }
         break;
       }
@@ -208,7 +167,8 @@ export function P2PProvider({ children, notes, onRemoteUpdateNote, onRemoteDelet
         statusMessage,
         connectToPeer,
         broadcastNoteUpdate,
-        broadcastNoteDelete
+        broadcastNoteDelete,
+        setRemoteHandlers
       }}
     >
       {children}

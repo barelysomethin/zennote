@@ -1,86 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { NotesProvider, useNotes } from './context/NotesContext';
+import { NotesProvider } from './context/NotesContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
-import { P2PProvider, useP2P } from './context/P2PContext';
+import { P2PProvider } from './context/P2PContext';
 
 import { LockScreen } from './components/LockScreen';
 import { ZenHeader } from './components/ZenHeader';
 import { Sidebar } from './components/Sidebar';
 import { NoteEditor } from './components/NoteEditor';
 import { SettingsModal } from './components/SettingsModal';
-
-function P2PNotesBridge({ children }) {
-  const [broadcastUpdateFn, setBroadcastUpdateFn] = useState(() => () => {});
-  const [broadcastDeleteFn, setBroadcastDeleteFn] = useState(() => () => {});
-
-  return (
-    <P2PProviderBridge
-      setBroadcastUpdateFn={setBroadcastUpdateFn}
-      setBroadcastDeleteFn={setBroadcastDeleteFn}
-    >
-      <NotesProvider
-        broadcastUpdate={(note) => broadcastUpdateFn(note)}
-        broadcastDelete={(id) => broadcastDeleteFn(id)}
-      >
-        <NotesP2PSyncConsumer>{children}</NotesP2PSyncConsumer>
-      </NotesProvider>
-    </P2PProviderBridge>
-  );
-}
-
-function P2PProviderBridge({ children, setBroadcastUpdateFn, setBroadcastDeleteFn }) {
-  const dummyNotes = [];
-
-  const handleRemoteUpdate = (note) => {
-    if (window.__zenApplyRemoteUpsert) window.__zenApplyRemoteUpsert(note);
-  };
-  const handleRemoteDelete = (id) => {
-    if (window.__zenApplyRemoteDelete) window.__zenApplyRemoteDelete(id);
-  };
-  const handleBulkSync = (notes) => {
-    if (window.__zenApplyBulkSync) window.__zenApplyBulkSync(notes);
-  };
-
-  return (
-    <P2PProvider
-      notes={dummyNotes}
-      onRemoteUpdateNote={handleRemoteUpdate}
-      onRemoteDeleteNote={handleRemoteDelete}
-      onBulkSyncNotes={handleBulkSync}
-    >
-      <P2PContextRegistrar
-        setBroadcastUpdateFn={setBroadcastUpdateFn}
-        setBroadcastDeleteFn={setBroadcastDeleteFn}
-      >
-        {children}
-      </P2PContextRegistrar>
-    </P2PProvider>
-  );
-}
-
-function P2PContextRegistrar({ children, setBroadcastUpdateFn, setBroadcastDeleteFn }) {
-  const { broadcastNoteUpdate, broadcastNoteDelete } = useP2P();
-
-  useEffect(() => {
-    setBroadcastUpdateFn(() => (note) => broadcastNoteUpdate(note));
-    setBroadcastDeleteFn(() => (id) => broadcastNoteDelete(id));
-  }, [broadcastNoteUpdate, broadcastNoteDelete, setBroadcastUpdateFn, setBroadcastDeleteFn]);
-
-  return children;
-}
-
-function NotesP2PSyncConsumer({ children }) {
-  const { applyRemoteNoteUpsert, applyRemoteNoteDelete, applyBulkSyncNotes } = useNotes();
-
-  useEffect(() => {
-    window.__zenApplyRemoteUpsert = applyRemoteNoteUpsert;
-    window.__zenApplyRemoteDelete = applyRemoteNoteDelete;
-    window.__zenApplyBulkSync = applyBulkSyncNotes;
-  }, [applyRemoteNoteUpsert, applyRemoteNoteDelete, applyBulkSyncNotes]);
-
-  return children;
-}
 
 function AppContent() {
   const { isLocked, hasPasswordSet, lockApp } = useAuth();
@@ -142,9 +70,11 @@ export default function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <P2PNotesBridge>
-          <AppContent />
-        </P2PNotesBridge>
+        <P2PProvider>
+          <NotesProvider>
+            <AppContent />
+          </NotesProvider>
+        </P2PProvider>
       </ThemeProvider>
     </AuthProvider>
   );
