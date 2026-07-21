@@ -141,21 +141,15 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Scrollbar */
+/* Hide scrollbar across all browsers while maintaining smooth scrolling */
+* {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
-  opacity: 0.3;
-  border-radius: var(--radius-full);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* App Shell Layout */
