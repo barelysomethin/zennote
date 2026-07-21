@@ -3,14 +3,29 @@ import Peer from 'peerjs';
 
 const P2PContext = createContext();
 
-const STORAGE_KEY_SYNC_CODE = 'zen_p2p_sync_code';
+const STORAGE_KEY_PEER_ID = 'zen_persistent_peer_id';
+const STORAGE_KEY_PAIRED_PEERS = 'zen_paired_peer_ids';
 
 export function P2PProvider({ children }) {
-  const [syncCode, setSyncCode] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY_SYNC_CODE) || 'ZEN-ROOM';
+  // Get or create a persistent device peer ID for this browser
+  const [myPeerId, setMyPeerId] = useState(() => {
+    let stored = localStorage.getItem(STORAGE_KEY_PEER_ID);
+    if (!stored) {
+      stored = 'zen-' + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem(STORAGE_KEY_PEER_ID, stored);
+    }
+    return stored;
   });
 
-  const [myPeerId, setMyPeerId] = useState('');
+  const [pairedPeers, setPairedPeers] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_PAIRED_PEERS);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
   const [isConnected, setIsConnected] = useState(false);
   const [activeConnections, setActiveConnections] = useState([]);
   const [statusMessage, setStatusMessage] = useState('P2P Standby');
@@ -27,36 +42,34 @@ export function P2PProvider({ children }) {
     remoteHandlersRef.current = { ...remoteHandlersRef.current, ...handlers };
   };
 
-  // Generate or set sync code
-  const updateSyncCode = (code) => {
-    const clean = code.trim().toUpperCase();
-    setSyncCode(clean);
-    localStorage.setItem(STORAGE_KEY_SYNC_CODE, clean);
-  };
-
-  const generateRandomSyncCode = () => {
-    const code = 'ZEN-' + Math.floor(100000 + Math.random() * 900000);
-    updateSyncCode(code);
-    return code;
-  };
-
-  // Initialize PeerJS when sync code exists
+  // Sync pairedPeers to LocalStorage
   useEffect(() => {
-    if (!syncCode) {
-      setIsConnected(false);
-      setStatusMessage('P2P Standby');
-      return;
-    }
+    try {
+      localStorage.setItem(STORAGE_KEY_PAIRED_PEERS, JSON.stringify(pairedPeers));
+    } catch (e) {}
+  }, [pairedPeers]);
+
+  // Initialize PeerJS with persistent custom Peer ID
+  useEffect(() => {
+    if (!myPeerId) return;
 
     setStatusMessage('Connecting to P2P network...');
 
-    const peer = new Peer();
+    // Initialize with fixed persistent ID
+    const peer = new Peer(myPeerId);
     peerRef.current = peer;
 
     peer.on('open', (id) => {
-      setMyPeerId(id);
       setStatusMessage(`P2P Ready`);
       setIsConnected(true);
+
+      // Auto reconnect to saved paired peers upon reload
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_PAIRED_PEERS) || '[]');
+      saved.forEach(remoteId => {
+        if (remoteId && remoteId !== id) {
+          connectToPeer(remoteId);
+        }
+      });
     });
 
     peer.on('connection', (conn) => {
@@ -64,8 +77,15 @@ export function P2PProvider({ children }) {
     });
 
     peer.on('error', (err) => {
-      console.warn('P2P Peer error:', err);
-      setStatusMessage('P2P Standby');
+      // If ID unavailable/taken temporarily, fallback gracefully
+      if (err.type === 'unavailable-id') {
+        const fallbackId = 'zen-' + Math.random().toString(36).substring(2, 10);
+        localStorage.setItem(STORAGE_KEY_PEER_ID, fallbackId);
+        setMyPeerId(fallbackId);
+      } else {
+        console.warn('P2P Peer error:', err);
+        setStatusMessage('P2P Standby');
+      }
     });
 
     return () => {
@@ -73,7 +93,7 @@ export function P2PProvider({ children }) {
       connectionsRef.current = [];
       if (peerRef.current) peerRef.current.destroy();
     };
-  }, [syncCode]);
+  }, [myPeerId]);
 
   // Setup connection handlers
   const setupConnection = (conn) => {
@@ -83,10 +103,16 @@ export function P2PProvider({ children }) {
         setActiveConnections([...connectionsRef.current]);
       }
       setStatusMessage(`Connected (${connectionsRef.current.length} Peer)`);
+
+      // Add to paired peers list
+      setPairedPeers(prev => {
+        if (!prev.includes(conn.peer)) return [...prev, conn.peer];
+        return prev;
+      });
     });
 
     conn.on('data', (data) => {
-      handleIncomingP2PData(data, conn);
+      handleIncomingP2PData(data);
     });
 
     conn.on('close', () => {
@@ -100,9 +126,14 @@ export function P2PProvider({ children }) {
 
   // Connect to target remote Peer ID
   const connectToPeer = (targetPeerId) => {
-    if (!peerRef.current || !targetPeerId) return;
+    const cleanId = targetPeerId.trim();
+    if (!peerRef.current || !cleanId || cleanId === myPeerId) return;
+
+    // Avoid duplicate connections
+    if (connectionsRef.current.some(c => c.peer === cleanId)) return;
+
     setStatusMessage('Pairing devices...');
-    const conn = peerRef.current.connect(targetPeerId.trim());
+    const conn = peerRef.current.connect(cleanId);
     setupConnection(conn);
   };
 
@@ -158,10 +189,8 @@ export function P2PProvider({ children }) {
   return (
     <P2PContext.Provider
       value={{
-        syncCode,
-        updateSyncCode,
-        generateRandomSyncCode,
         myPeerId,
+        pairedPeers,
         isConnected,
         activeConnections,
         statusMessage,
