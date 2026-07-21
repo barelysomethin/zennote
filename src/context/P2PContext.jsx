@@ -3,20 +3,10 @@ import Peer from 'peerjs';
 
 const P2PContext = createContext();
 
-const STORAGE_KEY_PEER_ID = 'zen_persistent_peer_id';
 const STORAGE_KEY_PAIRED_PEERS = 'zen_paired_peer_ids';
 
 export function P2PProvider({ children }) {
-  // Get or create a persistent device peer ID for this browser
-  const [myPeerId, setMyPeerId] = useState(() => {
-    let stored = localStorage.getItem(STORAGE_KEY_PEER_ID);
-    if (!stored) {
-      stored = 'zen-' + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem(STORAGE_KEY_PEER_ID, stored);
-    }
-    return stored;
-  });
-
+  const [myPeerId, setMyPeerId] = useState('');
   const [pairedPeers, setPairedPeers] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_PAIRED_PEERS);
@@ -28,7 +18,7 @@ export function P2PProvider({ children }) {
 
   const [isConnected, setIsConnected] = useState(false);
   const [activeConnections, setActiveConnections] = useState([]);
-  const [statusMessage, setStatusMessage] = useState('P2P Standby');
+  const [statusMessage, setStatusMessage] = useState('Connecting to P2P network...');
 
   const peerRef = useRef(null);
   const connectionsRef = useRef([]);
@@ -43,37 +33,34 @@ export function P2PProvider({ children }) {
     remoteHandlersRef.current = { ...remoteHandlersRef.current, ...handlers };
   };
 
-  // Sync pairedPeers to LocalStorage
+  // Save pairedPeers to LocalStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_PAIRED_PEERS, JSON.stringify(pairedPeers));
     } catch (e) {}
   }, [pairedPeers]);
 
-  // Initialize PeerJS with persistent custom Peer ID + Google STUN servers
+  // Initialize PeerJS cleanly with Google STUN servers
   useEffect(() => {
-    if (!myPeerId) return;
-
     setStatusMessage('Connecting to P2P network...');
 
-    const peer = new Peer(myPeerId, {
+    const peer = new Peer({
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' }
+          { urls: 'stun:stun2.l.google.com:19302' }
         ]
       }
     });
     peerRef.current = peer;
 
     peer.on('open', (id) => {
-      setStatusMessage(`P2P Ready`);
+      setMyPeerId(id);
+      setStatusMessage('P2P Ready');
       setIsConnected(true);
 
-      // Auto reconnect to saved paired peers upon reload
+      // Auto connect to any previously paired peers
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_PAIRED_PEERS) || '[]');
       saved.forEach(remoteId => {
         if (remoteId && remoteId !== id) {
@@ -87,14 +74,8 @@ export function P2PProvider({ children }) {
     });
 
     peer.on('error', (err) => {
-      if (err.type === 'unavailable-id') {
-        const fallbackId = 'zen-' + Math.random().toString(36).substring(2, 10);
-        localStorage.setItem(STORAGE_KEY_PEER_ID, fallbackId);
-        setMyPeerId(fallbackId);
-      } else {
-        console.warn('P2P Peer error:', err);
-        setStatusMessage('P2P Standby');
-      }
+      console.warn('P2P error:', err);
+      setStatusMessage('P2P Network Busy');
     });
 
     return () => {
@@ -102,7 +83,7 @@ export function P2PProvider({ children }) {
       connectionsRef.current = [];
       if (peerRef.current) peerRef.current.destroy();
     };
-  }, [myPeerId]);
+  }, []);
 
   // Setup connection handlers
   const setupConnection = (conn) => {
@@ -113,13 +94,13 @@ export function P2PProvider({ children }) {
       }
       setStatusMessage(`Connected (${connectionsRef.current.length} Peer)`);
 
-      // Add to paired peers list
+      // Remember paired peer ID
       setPairedPeers(prev => {
         if (!prev.includes(conn.peer)) return [...prev, conn.peer];
         return prev;
       });
 
-      // Send current notes state to new peer
+      // Send current notes to newly connected peer
       if (remoteHandlersRef.current.getAllNotes) {
         const allNotes = remoteHandlersRef.current.getAllNotes();
         conn.send({ type: 'BULK_NOTE_UPDATE', notes: allNotes });
